@@ -12,6 +12,8 @@
 #include "jemalloc/internal/safety_check.h"
 #include "jemalloc/internal/util.h"
 
+#include <xmmintrin.h>
+
 JEMALLOC_DIAGNOSTIC_DISABLE_SPURIOUS
 
 /******************************************************************************/
@@ -201,13 +203,19 @@ arena_slab_reg_alloc(edata_t *slab, const bin_info_t *bin_info) {
 	void *ret;
 	slab_data_t *slab_data = edata_slab_data_get(slab);
 	size_t regind;
+	size_t nextind;
 
 	assert(edata_nfree_get(slab) > 0);
 	assert(!bitmap_full(slab_data->bitmap, &bin_info->bitmap_info));
 
-	regind = bitmap_sfu(slab_data->bitmap, &bin_info->bitmap_info);
+	regind = bitmap_sfun(slab_data->bitmap, &bin_info->bitmap_info, &nextind);
 	ret = (void *)((uintptr_t)edata_addr_get(slab) +
 	    (uintptr_t)(bin_info->reg_size * regind));
+
+	void *next_ptr = (void *)((uintptr_t)edata_addr_get(slab) +
+		(uintptr_t)(bin_info->reg_size * nextind));
+	_mm_prefetch((char*)next_ptr, _MM_HINT_T0);
+
 	edata_nfree_dec(slab);
 	return ret;
 }

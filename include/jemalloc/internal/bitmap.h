@@ -295,9 +295,9 @@ bitmap_ffu(const bitmap_t *bitmap, const bitmap_info_t *binfo, size_t min_bit) {
 #endif
 }
 
-/* sfu: set first unset. */
+/* sfun: set first unset & get next unset. */
 static inline size_t
-bitmap_sfu(bitmap_t *bitmap, const bitmap_info_t *binfo) {
+bitmap_sfun(bitmap_t *bitmap, const bitmap_info_t *binfo, size_t* next_bit) {
 	size_t bit;
 	bitmap_t g;
 	unsigned i;
@@ -313,10 +313,51 @@ bitmap_sfu(bitmap_t *bitmap, const bitmap_info_t *binfo) {
 		g = bitmap[binfo->levels[i].group_offset + bit];
 		bit = (bit << LG_BITMAP_GROUP_NBITS) + (ffs_lu(g) - 1);
 	}
+	bitmap_set(bitmap, binfo, bit);
+	*next_bit = bit; // not set on this path
 #else
 	i = 0;
 	g = bitmap[0];
 	while ((bit = ffs_lu(g)) == 0) {
+		// not in current i-th bitmap
+		i++;
+		g = bitmap[i];
+	}
+	bit = (i << LG_BITMAP_GROUP_NBITS) + (bit - 1);
+	bitmap_set(bitmap, binfo, bit);
+	while ((*next_bit = ffs_lu(g)) == 0 && i < binfo->ngroups - 1) {
+		i++;
+		g = bitmap[i];
+	}
+	*next_bit = (i << LG_BITMAP_GROUP_NBITS) + (*next_bit - 1);
+#endif
+	return bit;
+}
+
+/* sfu: set first unset. */
+static inline size_t
+bitmap_sfu(bitmap_t *bitmap, const bitmap_info_t *binfo) {
+	size_t bit;
+	bitmap_t g;
+	unsigned i;
+
+	assert(!bitmap_full(bitmap, binfo));
+
+#ifdef BITMAP_USE_TREE
+	i = binfo->nlevels - 1;
+	g = bitmap[binfo->levels[i].group_offset];
+	bit = ffs_lu(g) - 1;
+	while (i > 0) {
+		// level-0 is the actual bitmaps; level-1 is the coarse-grained bitmap, etc.
+		i--;
+		g = bitmap[binfo->levels[i].group_offset + bit];
+		bit = (bit << LG_BITMAP_GROUP_NBITS) + (ffs_lu(g) - 1);
+	}
+#else
+	i = 0;
+	g = bitmap[0];
+	while ((bit = ffs_lu(g)) == 0) {
+		// not in current i-th bitmap
 		i++;
 		g = bitmap[i];
 	}
