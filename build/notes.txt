@@ -1,0 +1,4 @@
+./autogen.sh
+./configure --prefix=/home/wanghao/workspace/jemalloc/build --enable-static
+make -j12
+make install
